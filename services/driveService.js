@@ -2,8 +2,21 @@ const fs = require("fs");
 const path = require("path");
 const { google } = require("googleapis");
 
-const TOKEN_PATH = path.join(__dirname, "../token.json");
-const CREDENTIALS_PATH = path.join(__dirname, "../credentials/oauth.json");
+const fs = require("fs");
+const path = require("path");
+
+const renderOAuth = "/etc/secrets/oauth.json";
+const renderToken = "/etc/secrets/token.json";
+
+const CREDENTIALS_PATH =
+    fs.existsSync(renderOAuth)
+        ? renderOAuth
+        : path.join(__dirname, "../credentials/oauth.json");
+
+const TOKEN_PATH =
+    fs.existsSync(renderToken)
+        ? renderToken
+        : path.join(__dirname, "../token.json");
 
 const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
 const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
