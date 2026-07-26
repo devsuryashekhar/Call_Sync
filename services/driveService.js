@@ -80,7 +80,7 @@ const drive = google.drive({
 // Upload Function
 // ============================
 
-async function uploadFile(file) {
+async function uploadFile(file, meta = {}) {
 
     try {
 
@@ -90,10 +90,39 @@ async function uploadFile(file) {
         console.log("Path :", file.path);
         console.log("==================================");
 
+
+        const sanitize = (text) =>
+            String(text || "")
+                .replace(/[\\/:*?"<>|]/g, "_")
+                .trim();
+        
+        const contact =
+            sanitize(meta.contactName) ||
+            sanitize(meta.phoneNumber) ||
+            "Unknown";
+        
+        const callType =
+            sanitize(meta.callType) || "Unknown";
+        
+        const callDate =
+            sanitize(meta.callDate) || "UnknownDate";
+        
+        const callTime =
+            sanitize(meta.callTime) || "UnknownTime";
+        
+        const duration =
+            sanitize(meta.duration) || "00m00s";
+        
+        const extension =
+            path.extname(file.originalname) || ".mp3";
+        
+        const driveFileName =
+        `${callType}_${contact}_${callDate}_${callTime}_${duration}${extension}`;
+
         const response = await drive.files.create({
 
             requestBody: {
-                name: file.originalname,
+                name: driveFileName,
                 parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
             },
 
