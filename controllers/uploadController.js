@@ -22,22 +22,25 @@ exports.uploadRecording = async (req, res) => {
         }
 
         // -------------------------------------------------
+        // DEBUG: Raw multipart body
+        // -------------------------------------------------
+
+        console.log("req.body =", req.body);
+        console.log("req.body.metadata =", req.body.metadata);
+
+        // -------------------------------------------------
         // Parse metadata
         // -------------------------------------------------
 
         let meta = {};
 
         try {
-
             if (req.body.metadata) {
                 meta = JSON.parse(req.body.metadata);
             }
-
         } catch (e) {
-
             console.warn("⚠ Invalid metadata JSON.");
             console.warn(e.message);
-
             meta = {};
         }
 
@@ -45,16 +48,16 @@ exports.uploadRecording = async (req, res) => {
         // Log upload details
         // -------------------------------------------------
 
-        console.log("File Information");
+        console.log("\nFile Information");
         console.log("------------------------------");
         console.log("Original Name :", req.file.originalname);
         console.log("Mime Type     :", req.file.mimetype);
         console.log("Size          :", req.file.size, "bytes");
         console.log("Temp Path     :", req.file.path);
 
-        console.log("\nMetadata");
+        console.log("\nParsed Metadata");
         console.log("------------------------------");
-        console.log(meta);
+        console.dir(meta, { depth: null });
 
         // -------------------------------------------------
         // Upload to Google Drive
@@ -69,10 +72,6 @@ exports.uploadRecording = async (req, res) => {
         console.log("Drive File ID   :", uploadedFile.id);
         console.log("Drive File Name :", uploadedFile.name);
         console.log("========================================\n");
-
-        // -------------------------------------------------
-        // Response
-        // -------------------------------------------------
 
         return res.status(200).json({
             success: true,
