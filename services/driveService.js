@@ -2,162 +2,427 @@ const fs = require("fs");
 const path = require("path");
 const { google } = require("googleapis");
 
-// ============================
-// Credential Paths
-// ============================
+// ========================================================
+// CREDENTIAL PATHS
+// ========================================================
 
 const renderOAuth = "/etc/secrets/oauth.json";
 const renderToken = "/etc/secrets/token.json";
 
-const localOAuth = path.join(__dirname, "../credentials/oauth.json");
-const localToken = path.join(__dirname, "../token.json");
+const localOAuth = path.join(
+    __dirname,
+    "../credentials/oauth.json"
+);
 
-const CREDENTIALS_PATH = fs.existsSync(renderOAuth)
-    ? renderOAuth
-    : localOAuth;
+const localToken = path.join(
+    __dirname,
+    "../token.json"
+);
 
-const TOKEN_PATH = fs.existsSync(renderToken)
-    ? renderToken
-    : localToken;
+const CREDENTIALS_PATH =
+    fs.existsSync(renderOAuth)
+        ? renderOAuth
+        : localOAuth;
 
-// ============================
-// Check Required Files
-// ============================
+const TOKEN_PATH =
+    fs.existsSync(renderToken)
+        ? renderToken
+        : localToken;
+
+
+// ========================================================
+// VALIDATE REQUIRED FILES
+// ========================================================
 
 if (!fs.existsSync(CREDENTIALS_PATH)) {
+
     throw new Error(
         `OAuth credentials not found.\nExpected at:\n${CREDENTIALS_PATH}`
     );
 }
 
 if (!fs.existsSync(TOKEN_PATH)) {
+
     throw new Error(
         `Token file not found.\nExpected at:\n${TOKEN_PATH}`
     );
 }
 
-// ============================
-// Read Credentials
-// ============================
+
+// ========================================================
+// LOAD GOOGLE OAUTH CREDENTIALS
+// ========================================================
 
 const credentials = JSON.parse(
-    fs.readFileSync(CREDENTIALS_PATH, "utf8")
+    fs.readFileSync(
+        CREDENTIALS_PATH,
+        "utf8"
+    )
 );
 
 const token = JSON.parse(
-    fs.readFileSync(TOKEN_PATH, "utf8")
+    fs.readFileSync(
+        TOKEN_PATH,
+        "utf8"
+    )
 );
 
-// Supports both Desktop OAuth and Web OAuth
+
+// Supports Desktop OAuth and Web OAuth.
 
 const oauth =
-    credentials.installed || credentials.web;
+    credentials.installed ||
+    credentials.web;
 
 if (!oauth) {
+
     throw new Error(
         "Invalid oauth.json. 'installed' or 'web' section missing."
     );
 }
 
-const oauth2Client = new google.auth.OAuth2(
-    oauth.client_id,
-    oauth.client_secret,
-    oauth.redirect_uris[0]
+
+// ========================================================
+// CREATE OAUTH CLIENT
+// ========================================================
+
+const oauth2Client =
+    new google.auth.OAuth2(
+        oauth.client_id,
+        oauth.client_secret,
+        oauth.redirect_uris[0]
+    );
+
+oauth2Client.setCredentials(
+    token
 );
 
-oauth2Client.setCredentials(token);
 
-// ============================
-// Google Drive Client
-// ============================
+// ========================================================
+// GOOGLE DRIVE CLIENT
+// ========================================================
 
-const drive = google.drive({
-    version: "v3",
-    auth: oauth2Client,
-});
+const drive =
+    google.drive({
+        version: "v3",
+        auth: oauth2Client,
+    });
 
-// ============================
-// Upload Function
-// ============================
 
-async function uploadFile(file, meta = {}) {
+// ========================================================
+// SAFE ORIGINAL FILE NAME
+// ========================================================
+
+function getOriginalFileName(file) {
+
+    if (
+        !file ||
+        !file.originalname
+    ) {
+
+        throw new Error(
+            "Original recording filename is missing."
+        );
+    }
+
+    /*
+     * path.basename() prevents directory traversal while
+     * preserving the actual filename sent by CallSync.
+     *
+     * Example:
+     *
+     * Phone:
+     * Call Jhinku_260803_123235.m4a
+     *
+     * Drive:
+     * Call Jhinku_260803_123235.m4a
+     */
+
+    const originalName =
+        path.basename(
+            String(file.originalname)
+        );
+
+    if (!originalName.trim()) {
+
+        throw new Error(
+            "Original recording filename is empty."
+        );
+    }
+
+    return originalName;
+}
+
+
+// ========================================================
+// DELETE TEMPORARY FILE
+// ========================================================
+
+function deleteTempFile(filePath) {
+
+    if (!filePath) {
+        return;
+    }
 
     try {
 
-        console.log("==================================");
-        console.log("Uploading File to Google Drive");
-        console.log("Name :", file.originalname);
-        console.log("Path :", file.path);
-        console.log("==================================");
+        if (fs.existsSync(filePath)) {
 
+            fs.unlinkSync(
+                filePath
+            );
 
-        const sanitize = (text) =>
-            String(text || "")
-                .replace(/[\\/:*?"<>|]/g, "_")
-                .trim();
-        
-        const contact =
-            sanitize(meta.contactName) ||
-            sanitize(meta.phoneNumber) ||
-            "Unknown";
-        
-        const callType =
-            sanitize(meta.callType) || "Unknown";
-        
-        const callDate =
-            sanitize(meta.callDate) || "UnknownDate";
-        
-        const callTime =
-            sanitize(meta.callTime) || "UnknownTime";
-        
-        const duration =
-            sanitize(meta.duration) || "00m00s";
-        
-        const extension =
-            path.extname(file.originalname) || ".mp3";
-        
-        const driveFileName =
-        `${callType}_${contact}_${callDate}_${callTime}_${duration}${extension}`;
-
-        const response = await drive.files.create({
-
-            requestBody: {
-                name: driveFileName,
-                parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
-            },
-
-            media: {
-                mimeType: file.mimetype,
-                body: fs.createReadStream(file.path),
-            },
-
-            fields: "id,name,webViewLink",
-        });
-
-        console.log("✅ Upload Successful");
-        console.log("File ID :", response.data.id);
-
-        if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
+            console.log(
+                "Temporary upload file deleted:",
+                filePath
+            );
         }
+
+    } catch (error) {
+
+        console.error(
+            "Unable to delete temporary file:",
+            error.message
+        );
+    }
+}
+
+
+// ========================================================
+// UPLOAD RECORDING
+// ========================================================
+
+async function uploadFile(
+    file,
+    meta = {}
+) {
+
+    if (!file) {
+
+        throw new Error(
+            "No recording file supplied."
+        );
+    }
+
+
+    if (!file.path) {
+
+        throw new Error(
+            "Temporary recording path is missing."
+        );
+    }
+
+
+    if (!fs.existsSync(file.path)) {
+
+        throw new Error(
+            `Temporary recording does not exist: ${file.path}`
+        );
+    }
+
+
+    // ====================================================
+    // PRESERVE ORIGINAL PHONE FILENAME
+    // ====================================================
+
+    const driveFileName =
+        getOriginalFileName(file);
+
+
+    console.log(
+        "=================================="
+    );
+
+    console.log(
+        "Uploading Recording to Google Drive"
+    );
+
+    console.log(
+        "Original Phone Name :",
+        file.originalname
+    );
+
+    console.log(
+        "Drive File Name     :",
+        driveFileName
+    );
+
+    console.log(
+        "MIME Type           :",
+        file.mimetype
+    );
+
+    console.log(
+        "Size                :",
+        file.size,
+        "bytes"
+    );
+
+    console.log(
+        "Temporary Path      :",
+        file.path
+    );
+
+    console.log(
+        "=================================="
+    );
+
+
+    try {
+
+        // =================================================
+        // UPLOAD ORIGINAL RECORDING BYTES
+        // =================================================
+
+        const response =
+            await drive.files.create({
+
+                requestBody: {
+
+                    /*
+                     * IMPORTANT:
+                     *
+                     * Do NOT generate another filename here.
+                     *
+                     * Google Drive receives exactly the
+                     * filename CallSync sent.
+                     */
+
+                    name:
+                        driveFileName,
+
+                    parents: [
+                        process.env
+                            .GOOGLE_DRIVE_FOLDER_ID
+                    ],
+                },
+
+
+                media: {
+
+                    /*
+                     * This does NOT convert or re-encode
+                     * the recording.
+                     *
+                     * The temporary recording file is
+                     * streamed directly to Google Drive.
+                     */
+
+                    mimeType:
+                        file.mimetype ||
+                        "application/octet-stream",
+
+                    body:
+                        fs.createReadStream(
+                            file.path
+                        ),
+                },
+
+
+                fields:
+                    "id,name,size,mimeType,webViewLink",
+            });
+
+
+        // =================================================
+        // SUCCESS
+        // =================================================
+
+        console.log(
+            "=================================="
+        );
+
+        console.log(
+            "✅ GOOGLE DRIVE UPLOAD SUCCESSFUL"
+        );
+
+        console.log(
+            "Drive File ID   :",
+            response.data.id
+        );
+
+        console.log(
+            "Drive File Name :",
+            response.data.name
+        );
+
+        console.log(
+            "Drive File Size :",
+            response.data.size ||
+                "Not returned"
+        );
+
+        console.log(
+            "=================================="
+        );
+
+
+        // =================================================
+        // DELETE RENDER TEMP FILE
+        // =================================================
+
+        deleteTempFile(
+            file.path
+        );
+
 
         return response.data;
 
-    } catch (err) {
 
-        console.error("==================================");
-        console.error("GOOGLE DRIVE UPLOAD FAILED");
-        console.error(err.message);
+    } catch (error) {
 
-        if (err.response) {
-            console.error(err.response.data);
+        // =================================================
+        // FAILURE
+        // =================================================
+
+        console.error(
+            "=================================="
+        );
+
+        console.error(
+            "❌ GOOGLE DRIVE UPLOAD FAILED"
+        );
+
+        console.error(
+            "Original File:",
+            driveFileName
+        );
+
+        console.error(
+            "Error:",
+            error.message
+        );
+
+
+        if (error.response) {
+
+            console.error(
+                "Google Response:",
+                error.response.data
+            );
         }
 
-        console.error("==================================");
 
-        throw err;
+        console.error(
+            "=================================="
+        );
+
+
+        /*
+         * Don't delete the temporary file here.
+         *
+         * Let the route/error handling decide how a failed
+         * upload should be handled.
+         */
+
+        throw error;
     }
 }
+
+
+// ========================================================
+// EXPORTS
+// ========================================================
 
 module.exports = {
     uploadFile,
