@@ -225,8 +225,28 @@ async function uploadFile(
     // PRESERVE ORIGINAL PHONE FILENAME
     // ====================================================
 
-    const driveFileName =
-        getOriginalFileName(file);
+    const originalFileName =
+    getOriginalFileName(file);
+
+const rawCallType =
+    String(meta.callType || "")
+        .trim()
+        .toLowerCase();
+
+let direction = "";
+
+if (rawCallType === "incoming") {
+    direction = "Incoming";
+} else if (rawCallType === "outgoing") {
+    direction = "Outgoing";
+} else if (rawCallType === "missed") {
+    direction = "Missed";
+}
+
+const driveFileName =
+    direction
+        ? `${direction}_${originalFileName}`
+        : originalFileName;
 
 
     console.log(
