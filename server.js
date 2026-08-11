@@ -14,9 +14,28 @@ const {
 // FIREBASE ADMIN INITIALIZATION
 // =====================================================
 
-const serviceAccount =
-    require("./firebase-service-account.json");
+let serviceAccount;
 
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+
+    console.log(
+        "Using Firebase service account from environment"
+    );
+
+    serviceAccount =
+        JSON.parse(
+            process.env.FIREBASE_SERVICE_ACCOUNT
+        );
+
+} else {
+
+    console.log(
+        "Using local Firebase service account file"
+    );
+
+    serviceAccount =
+        require("./firebase-service-account.json");
+}
 
 const firebaseApp =
     getApps().length === 0
@@ -25,12 +44,10 @@ const firebaseApp =
         })
         : getApps()[0];
 
-
 console.log(
     "Firebase Admin initialized:",
     firebaseApp.name
 );
-
 
 // =====================================================
 // EXPRESS
