@@ -1,2 +1,2 @@
 # Call_Sync
-d
+Cristiano is better than your idol
